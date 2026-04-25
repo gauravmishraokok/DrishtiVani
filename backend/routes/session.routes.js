@@ -35,7 +35,7 @@ const intents = [
     handler: async (match, sessionId) => {
       const subjectName = match[1].trim();
       const chapterNum = parseInt(match[2]);
-      
+
       const subject = await Subject.findOne({ name: new RegExp(subjectName, 'i') });
       if (!subject) return { text: `Sorry, I couldn't find the subject ${subjectName}.` };
 
@@ -43,8 +43,8 @@ const intents = [
       if (!chapter) return { text: `Sorry, I couldn't find chapter ${chapterNum} for ${subjectName}.` };
 
       const content = await teachingService.getChunkContent(sessionId, chapter._id, 0);
-      return { 
-        text: content.structuredScript || content.script,
+      return {
+        text: content.script,
         data: {
           action: 'START_CHAPTER',
           voiceMode: 'VT',
@@ -52,7 +52,11 @@ const intents = [
           chunkIndex: content.chunkIndex,
           totalChunks: content.totalChunks,
           rawText: content.rawText,
-        } 
+          pageNum: content.pageNum,
+          pageImagePath: content.pageImagePath,
+          triggerMidQuiz: content.triggerMidQuiz,
+          triggerFinalQuiz: content.triggerFinalQuiz
+        }
       };
     }
   },
@@ -89,7 +93,7 @@ const intents = [
       const content = await teachingService.getChunkContent(sessionId, chapter._id, chunkIndex);
       if (!content) return { text: 'I could not load this chapter content right now.' };
       return {
-        text: content.structuredScript || content.script,
+        text: content.script,
         data: {
           action: 'START_CHAPTER',
           voiceMode: 'VT',
@@ -97,6 +101,10 @@ const intents = [
           chunkIndex: content.chunkIndex,
           totalChunks: content.totalChunks,
           rawText: content.rawText,
+          pageNum: content.pageNum,
+          pageImagePath: content.pageImagePath,
+          triggerMidQuiz: content.triggerMidQuiz,
+          triggerFinalQuiz: content.triggerFinalQuiz
         },
       };
     },
@@ -111,11 +119,11 @@ const intents = [
 
       const nextIndex = progress.current_chunk_index + 1;
       const content = await teachingService.getChunkContent(sessionId, progress.chapter_id, nextIndex);
-      
-      if (!content) return { text: "That was the last part of this chapter! Would you like to take a quiz?" };
-      
-      return { 
-        text: content.structuredScript || content.script,
+
+      if (!content) return { text: "That was the last part of this chapter! Great job finishing." };
+
+      return {
+        text: content.script,
         data: {
           action: 'CONTINUE',
           voiceMode: 'VT',
@@ -123,6 +131,10 @@ const intents = [
           totalChunks: content.totalChunks,
           rawText: content.rawText,
           chapterId: progress.chapter_id,
+          pageNum: content.pageNum,
+          pageImagePath: content.pageImagePath,
+          triggerMidQuiz: content.triggerMidQuiz,
+          triggerFinalQuiz: content.triggerFinalQuiz
         }
       };
     }
@@ -152,20 +164,20 @@ const intents = [
 router.post('/command', async (req, res) => {
   try {
     const { studentId, transcript } = req.body;
-    const sessionId = studentId; 
+    const sessionId = studentId;
     const normalizedTranscript = (transcript || '').trim();
     if (!normalizedTranscript) {
       return res.status(400).json({ error: 'Transcript is required.' });
     }
-    
+
     let responseText = "";
     let actionData = { action: 'UNKNOWN' };
     let handled = false;
 
     for (const intent of intents) {
       // Skip the old restricted QA regex
-      if (intent.name === 'QA') continue; 
-      
+      if (intent.name === 'QA') continue;
+
       const match = normalizedTranscript.match(intent.regex);
       if (match) {
         const result = await intent.handler(match, sessionId);
@@ -178,11 +190,11 @@ router.post('/command', async (req, res) => {
 
     // Default to RAG QA if no intent is matched
     if (!handled) {
-        const qaService = require('../services/qa.service');
-        const activeProgress = await Progress.findOne({ student_id: sessionId }).sort({ last_updated: -1 });
-        const result = await qaService.answerQuestion(normalizedTranscript, sessionId, activeProgress?.chapter_id);
-        responseText = result.answer || "I couldn't find an answer to that in the textbook. Could you rephrase?";
-        actionData = { action: 'QA', voiceMode: 'AGENT' };
+      const qaService = require('../services/qa.service');
+      const activeProgress = await Progress.findOne({ student_id: sessionId }).sort({ last_updated: -1 });
+      const result = await qaService.answerQuestion(normalizedTranscript, sessionId, activeProgress?.chapter_id);
+      responseText = result.answer || "I couldn't find an answer to that in the textbook. Could you rephrase?";
+      actionData = { action: 'QA', voiceMode: 'AGENT' };
     }
 
     // Save to conversation history
@@ -190,7 +202,7 @@ router.post('/command', async (req, res) => {
     if (!conversation) {
       conversation = await Conversation.create({ student_id: sessionId, messages: [] });
     }
-    
+
     conversation.messages.push({ role: 'student', text: normalizedTranscript });
     conversation.messages.push({ role: 'teacher', text: responseText });
     await conversation.save();
@@ -234,27 +246,35 @@ router.post('/start-chapter', async (req, res) => {
 
     let progress = await Progress.findOne({ student_id: studentId, chapter_id: chapter._id });
     if (!progress) {
-       progress = new Progress({
-         student_id: studentId,
-         subject_id: chapter.subject_id,
-         chapter_id: chapter._id,
-         current_chunk_index: 0
-       });
-       await progress.save();
+      progress = new Progress({
+        student_id: studentId,
+        subject_id: chapter.subject_id,
+        chapter_id: chapter._id,
+        current_chunk_index: 0
+      });
+      await progress.save();
     }
-    
+
     const chunkIndex = progress.current_chunk_index || 0;
     const content = await teachingService.getChunkContent(studentId, chapter._id, chunkIndex);
-    
-    const responseText = content.structuredScript || content.script || `Welcome to ${chapter.title}. Let's begin.`;
-    
+
+    if (!content) {
+      console.error(`[Session] Content not found for Ch ${chapter._id} at index ${chunkIndex}`);
+      return res.status(404).json({ error: 'No study material found for this chapter yet. It might still be processing.' });
+    }
+
     res.json({
       action: 'START_CHAPTER',
       voiceMode: 'VT',
-      text: responseText,
+      text: content.script,
       rawText: content.rawText || "Content loading...",
+      chapterId: chapter._id,
       chunkIndex: chunkIndex,
-      totalChunks: chapter.total_chunks,
+      totalChunks: content.totalChunks,
+      pageNum: content.pageNum,
+      pageImagePath: content.pageImagePath,
+      triggerMidQuiz: content.triggerMidQuiz,
+      triggerFinalQuiz: content.triggerFinalQuiz,
       useClientTTS: true
     });
   } catch (error) {

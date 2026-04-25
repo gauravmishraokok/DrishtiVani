@@ -1,107 +1,85 @@
 import React, { useState } from 'react';
 import { NavLink } from 'react-router-dom';
-import { BookOpen, User, Terminal, Brain, Menu, X, Home, Settings, BarChart3 } from 'lucide-react';
+import { BookOpen, User, Settings, LayoutDashboard, Database, BarChart, Menu, X } from 'lucide-react';
 
-const Sidebar = () => {
-  const [isCollapsed, setIsCollapsed] = useState(false);
-  
+const Sidebar = ({ percent = 0, chapterTitle = "" }) => {
+  const [isCollapsed, setIsCollapsed] = useState(true); // START COLLAPSED FOR MAX SPACE
+
   const navigationSections = [
     {
-      title: 'Neural Core',
+      title: 'Learning',
       items: [
-        { to: '/dashboard', icon: <Home size={18} />, label: 'Neural Dashboard' },
-        { to: '/dashboard', icon: <BookOpen size={18} />, label: 'Classroom' },
+        { to: '/dashboard', icon: <LayoutDashboard size={18} />, label: 'My Dashboard' }
       ]
     },
     {
-      title: 'Interface Control',
+      title: 'Management',
       items: [
-        { to: '/admin', icon: <Terminal size={18} />, label: 'Admin Terminal' },
-        { to: '/dashboard', icon: <BarChart3 size={18} />, label: 'Biometrics' },
-      ]
-    },
-    {
-      title: 'User Link',
-      items: [
-        { to: '/dashboard', icon: <User size={18} />, label: 'Student Profile' },
-        { to: '/dashboard', icon: <Settings size={18} />, label: 'System Config' },
+        { to: '/admin', icon: <Database size={18} />, label: 'Admin Panel' }
       ]
     }
   ];
 
   return (
-    <div className={`bg-surface border-r border-border transition-all duration-300 z-50 flex flex-col ${
-      isCollapsed ? 'w-20' : 'w-72'
-    }`}>
+    <div className={`bg-white border-r border-[#E8D5C4] transition-all duration-300 z-50 flex flex-col ${isCollapsed ? 'w-16' : 'w-64'} h-full shrink-0`}>
       {/* Header with Toggle */}
-      <div className="p-6 border-b border-border bg-background flex items-center justify-between">
+      <div className="p-4 border-b border-[#E8D5C4] bg-white flex items-center justify-between min-h-[64px]">
         {!isCollapsed && (
-          <div className="flex items-center gap-3">
-            <div className="h-10 w-10 bg-accent rounded-xl flex items-center justify-center shadow-[0_0_15px_rgba(47,129,247,0.3)]">
-               <Brain className="text-bright" size={20} />
+          <div className="flex items-center gap-2">
+            <div className="h-8 w-8 bg-[#F97316] rounded-lg flex items-center justify-center shadow-md">
+              <BookOpen className="text-white" size={16} />
             </div>
-            <div>
-              <h1 className="font-bold text-sm tracking-tight">DRISHTI VANI</h1>
-              <p className="text-[10px] mono text-accent uppercase tracking-widest">Active_Uplink</p>
-            </div>
+            <h1 className="font-bold text-base font-display text-[#1A1A1A] tracking-tight">DrishtiVani</h1>
           </div>
         )}
         {isCollapsed && (
           <div className="flex items-center justify-center w-full">
-            <Brain className="text-accent" size={24} />
+            <BookOpen className="text-[#F97316]" size={20} />
           </div>
         )}
         <button
           onClick={() => setIsCollapsed(!isCollapsed)}
-          className="p-1 hover:text-accent transition-colors"
+          className="p-1 hover:text-[#F97316] transition-colors"
         >
-          {isCollapsed ? <Menu size={20} /> : <X size={18} />}
+          {isCollapsed ? <Menu size={18} /> : <X size={16} />}
         </button>
       </div>
 
+
       {/* Navigation Sections */}
-      <nav className="flex-1 p-4 space-y-8 overflow-y-auto custom-scrollbar">
+      <nav className="flex-1 p-2 space-y-4 overflow-y-auto custom-scrollbar">
         {navigationSections.map((section) => (
-          <div key={section.title} className="space-y-2">
+          <div key={section.title} className="space-y-1">
             {!isCollapsed && (
-              <h3 className="px-4 mono text-[10px] text-muted uppercase tracking-[0.2em] mb-4">
+              <h3 className="px-3 text-[9px] font-bold text-[#9CA3AF] uppercase tracking-widest mb-1 mt-4">
                 {section.title}
               </h3>
             )}
-            <div className="space-y-1">
-               {section.items.map((item) => (
-                 <NavLink
-                   key={`${section.title}-${item.label}-${item.to}`}
-                   to={item.to}
-                   className={({ isActive }) => `
-                     flex items-center gap-4 px-4 py-3 rounded-xl transition-all duration-200 text-sm font-medium
-                     ${isActive 
-                       ? 'bg-accent/10 text-accent border border-accent/20' 
-                       : 'text-muted hover:bg-surface-hover hover:text-bright'}
+            <div className="space-y-0.5">
+              {section.items.map((item) => (
+                <NavLink
+                  key={`${section.title}-${item.label}-${item.to}`}
+                  to={item.to}
+                  className={({ isActive }) => `
+                     flex items-center gap-3 px-3 py-2 rounded-lg transition-all duration-200 text-xs font-medium
+                     ${isActive
+                      ? 'bg-[#FFF1E6] text-[#F97316] border-l-4 border-l-[#F97316] rounded-l-none'
+                      : 'text-[#6B7280] hover:bg-[#FFF8F3] hover:text-[#1A1A1A]'}
                    `}
-                 >
-                   <div className="flex-shrink-0">{item.icon}</div>
-                   {!isCollapsed && <span className="flex-1 truncate">{item.label}</span>}
-                 </NavLink>
-               ))}
+                >
+                  <div className="flex-shrink-0">{item.icon}</div>
+                  {!isCollapsed && <span className="flex-1 truncate">{item.label}</span>}
+                </NavLink>
+              ))}
             </div>
           </div>
         ))}
       </nav>
 
-      {/* Footer - Minimal Status */}
-      <div className="p-6 border-t border-border bg-background/50">
-        <div className="flex items-center gap-3">
-          <div className="relative">
-             <div className="h-2.5 w-2.5 bg-success rounded-full animate-pulse" />
-             <div className="absolute inset-0 h-2.5 w-2.5 bg-success rounded-full animate-ping opacity-75" />
-          </div>
-          {!isCollapsed && (
-            <div className="flex flex-col">
-               <span className="text-[10px] mono text-success uppercase">Node_Healthy</span>
-               <span className="text-[9px] text-muted uppercase">Ping: 24ms</span>
-            </div>
-          )}
+      {/* Status Footer */}
+      <div className="p-4 border-t border-[#E8D5C4] bg-[#FFF8F3]/50">
+        <div className="flex items-center gap-2">
+          <div className="h-1.5 w-1.5 bg-[#16A34A] rounded-full animate-pulse" />
         </div>
       </div>
     </div>

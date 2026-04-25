@@ -1,0 +1,8 @@
+[2026-04-25T17:01:00.544Z] [Ingestion FAILED]: Bad Request
+Error: Bad Request
+    at Object.fun [as upsertPoints] (C:\Users\khush\OneDrive\Desktop\DV\DrishtiVani\backend\node_modules\@qdrant\openapi-typescript-fetch\dist\cjs\fetcher.js:172:23)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async QdrantClient.upsert (C:\Users\khush\OneDrive\Desktop\DV\DrishtiVani\backend\node_modules\@qdrant\js-client-rest\dist\cjs\qdrant-client.js:581:26)
+    at async Object.upsertChunk (C:\Users\khush\OneDrive\Desktop\DV\DrishtiVani\backend\adapters\vector.adapter.js:45:5)
+    at async Object.processPDF (C:\Users\khush\OneDrive\Desktop\DV\DrishtiVani\backend\services\ingestion.service.js:86:9)
+    at async C:\Users\khush\OneDrive\Desktop\DV\DrishtiVani\backend\routes\admin.routes.js:31:20

@@ -1,14 +1,29 @@
 import Vapi from '@vapi-ai/web';
 import { useState, useEffect, useRef, useCallback } from 'react';
 
-const ASSISTANT_ID = import.meta.env.VITE_VAPI_ASSISTANT_ID; 
+const ASSISTANT_ID = import.meta.env.VITE_VAPI_ASSISTANT_ID;
 const PUBLIC_KEY = import.meta.env.VITE_VAPI_PUBLIC_KEY;
 
 const vapi = new Vapi(PUBLIC_KEY);
 let sharedStartPromise = null;
 let sharedCallActive = false;
-const MIN_LISTEN_MS = 3000;
-const AGENT_FINALIZE_MS = 4000;
+const MIN_LISTEN_MS = 2000;
+const AGENT_FINALIZE_MS = 800;
+
+// HARD RESET UTILITY
+const forceStopAllMediaTracks = async () => {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true }).catch(() => null);
+    if (stream) {
+      stream.getTracks().forEach(track => {
+        track.stop();
+        track.enabled = false;
+      });
+    }
+  } catch (e) {
+    console.warn('[Voice] Hardware release failed', e);
+  }
+};
 
 export const useVoice = (sessionId) => {
   const [isCallActive, setIsCallActive] = useState(false);
@@ -29,7 +44,7 @@ export const useVoice = (sessionId) => {
       console.log('[Vapi] Bridge Active');
       sharedCallActive = true;
       setIsCallActive(true);
-      vapi.setMuted(true); 
+      vapi.setMuted(true);
     };
 
     const onCallEnd = () => {
@@ -42,7 +57,7 @@ export const useVoice = (sessionId) => {
 
     const onSpeechStart = () => setIsSpeaking(true);
     const onSpeechEnd = () => setIsSpeaking(false);
-    
+
     const onMessage = (message) => {
       if (message.type === 'transcript' && message.transcriptType === 'final') {
         latestTranscript.current = message.transcript;
@@ -78,6 +93,15 @@ export const useVoice = (sessionId) => {
 
   const startVoiceSession = async (targetMode = voiceMode) => {
     if (targetMode !== 'AGENT') return false;
+
+    // CONFIG GUARD: Prevent Vapi from locking mic if IDs are missing
+    if (!ASSISTANT_ID || !PUBLIC_KEY || ASSISTANT_ID === 'undefined') {
+      console.error('[Vapi] Configuration Error: Missing VITE_VAPI_ASSISTANT_ID or VITE_VAPI_PUBLIC_KEY');
+      setLastError('Voice Agent not configured correctly. Using default mode.');
+      setVoiceMode('VT');
+      return false;
+    }
+
     if (sharedCallActive || isCallActive) return true;
     if (sharedStartPromise) return sharedStartPromise;
     try {
@@ -87,6 +111,8 @@ export const useVoice = (sessionId) => {
       return true;
     } catch (err) {
       console.error('[Vapi] Start Failed:', err);
+      // HARD CLEANUP ON FAIL
+      await forceStopAllMediaTracks();
       return false;
     } finally {
       startPromiseRef.current = null;
@@ -103,33 +129,57 @@ export const useVoice = (sessionId) => {
         if (!recognitionRef.current) {
           const recognition = new Recognition();
           recognition.lang = 'en-IN';
-          recognition.interimResults = false;
-          recognition.continuous = false;
+          recognition.interimResults = true;
+          recognition.continuous = true; // KEEP ALIVE WHILE HOLDING
           recognition.maxAlternatives = 1;
-          recognition.onresult = (event) => {
-            const finalText = event?.results?.[0]?.[0]?.transcript?.trim() || '';
-            latestTranscript.current = finalText;
-            setTranscript(finalText);
+
+          recognition.onstart = () => {
+            console.log('[STT] Session Started');
+            setIsListening(true);
           };
-          recognition.onerror = () => {
-            setLastError('Browser speech recognition error');
+
+          recognition.onresult = (event) => {
+            let finalPart = '';
+            for (let i = event.resultIndex; i < event.results.length; ++i) {
+              if (event.results[i].isFinal) {
+                finalPart += event.results[i][0].transcript;
+              }
+            }
+            if (finalPart) {
+              latestTranscript.current = finalPart.trim();
+              setTranscript(finalPart.trim());
+            }
+          };
+
+          recognition.onerror = (event) => {
+            console.error('[STT Error]', event.error);
+            setLastError(`Browser STT error: ${event.error}`);
             listeningRef.current = false;
             setIsListening(false);
           };
+
           recognition.onend = () => {
             listeningRef.current = false;
             setIsListening(false);
             if (recognitionResolverRef.current) {
-              recognitionResolverRef.current(latestTranscript.current);
-              recognitionResolverRef.current = null;
+              // Give result a tiny moment to settle before resolving
+              setTimeout(() => {
+                recognitionResolverRef.current(latestTranscript.current);
+                recognitionResolverRef.current = null;
+              }, 100);
             }
           };
           recognitionRef.current = recognition;
         }
-        listeningRef.current = true;
-        listenStartAtRef.current = Date.now();
-        recognitionRef.current.start();
-        setIsListening(true);
+
+        try {
+          latestTranscript.current = '';
+          listeningRef.current = true;
+          listenStartAtRef.current = Date.now();
+          recognitionRef.current.start();
+        } catch (e) {
+          console.warn('[STT] Start call failed (likely already running):', e.message);
+        }
         return;
       }
       console.warn('[Voice] Browser speech recognition unavailable in VT mode.');
@@ -161,7 +211,16 @@ export const useVoice = (sessionId) => {
     if (voiceMode === 'VT' && recognitionRef.current) {
       return new Promise((resolve) => {
         recognitionResolverRef.current = resolve;
+        // Stop() triggers onresult for final buffer, then onend
         recognitionRef.current.stop();
+
+        // Safety timeout in case onend never fires
+        setTimeout(() => {
+          if (recognitionResolverRef.current) {
+            recognitionResolverRef.current(latestTranscript.current);
+            recognitionResolverRef.current = null;
+          }
+        }, 1500);
       });
     }
 
@@ -179,12 +238,17 @@ export const useVoice = (sessionId) => {
     });
   };
 
+  const cleanupVoiceState = useCallback(() => {
+    listeningRef.current = false;
+    setIsListening(false);
+    setIsSpeaking(false);
+  }, []);
+
   const setVoiceMode = useCallback(async (nextMode) => {
     const mode = nextMode === 'AGENT' ? 'AGENT' : 'VT';
     if (mode === voiceMode) return;
 
-    listeningRef.current = false;
-    setIsListening(false);
+    cleanupVoiceState();
 
     if (mode === 'AGENT') {
       if (window.speechSynthesis) {
@@ -197,18 +261,30 @@ export const useVoice = (sessionId) => {
     // Switching back to VT: ensure agent call is fully stopped.
     try {
       await vapi.stop();
+      // Wait for call-end event to clear sharedCallActive
+      let waitCount = 0;
+      while (sharedCallActive && waitCount < 20) {
+        await new Promise(r => setTimeout(r, 100));
+        waitCount++;
+      }
     } catch (err) {
-      // Ignore stop errors when no active call exists.
+      // Ignore stop errors
     }
+
+    // HARD HARDWARE RESET
+    await forceStopAllMediaTracks();
+
+    // Hard Reset state
     sharedCallActive = false;
+    latestTranscript.current = '';
+    cleanupVoiceState();
     setIsCallActive(false);
     setVoiceModeState('VT');
-  }, [voiceMode]);
+  }, [voiceMode, cleanupVoiceState]);
 
   const speakTextWithMode = async (text, targetMode = null) => {
     if (!text) return;
-    const effectiveMode = targetMode || voiceMode;
-
+    const effectiveMode = 'VT'; // FORCE VT FOR RELIABILITY
     if (effectiveMode === 'VT') {
       if (!window.speechSynthesis) {
         console.warn('[Voice] Browser TTS unavailable in VT mode.');
@@ -242,15 +318,15 @@ export const useVoice = (sessionId) => {
     });
   };
 
-  return { 
+  return {
     startVoiceSession,
-    startListening, 
-    stopListening, 
+    startListening,
+    stopListening,
     speakText: speakTextWithMode,
     setVoiceMode,
     voiceMode,
     isCallActive,
-    isListening, 
+    isListening,
     isSpeaking,
     transcript,
     diagnostics: {

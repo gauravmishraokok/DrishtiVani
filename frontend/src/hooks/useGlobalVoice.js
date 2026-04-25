@@ -15,22 +15,29 @@ export const useGlobalVoice = (onTranscript, enabled = true) => {
 
   useEffect(() => {
     if (!enabled) return;
-    // Default all non-learning global flows to VT mode.
+    // CRITICAL: Dashboard and other global routes MUST stay in VT mode.
+    // AGENT (Vapi) is reserved exclusively for the Learning Page.
     setVoiceMode('VT');
   }, [setVoiceMode, enabled]);
 
   useEffect(() => {
     if (!enabled) return;
+
     const handleKeyDown = async (e) => {
-      // Toggle push-to-talk on each spacebar press
-      if (e.code === 'Space') {
-        if (e.repeat) return;
+      if (e.code === 'Space' && !e.repeat) {
         if (e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA') {
           e.preventDefault();
           if (!isListening) {
-            startListening();
-            return;
+            await startListening();
           }
+        }
+      }
+    };
+
+    const handleKeyUp = async (e) => {
+      if (e.code === 'Space') {
+        if (e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA') {
+          e.preventDefault();
           const transcript = await stopListening();
           if (!transcript) return;
 
@@ -41,10 +48,14 @@ export const useGlobalVoice = (onTranscript, enabled = true) => {
 
           const lowerT = transcript.toLowerCase();
           const pendingSubject = localStorage.getItem('pendingSubjectSelection');
+
           if (lowerT.includes('dashboard')) {
             speakText("Navigating to your dashboard.");
             navigate('/dashboard');
-          } else if (lowerT.includes('classroom') || lowerT.includes('learn') || lowerT.includes('read')) {
+            return;
+          }
+
+          if (lowerT.includes('classroom') || lowerT.includes('learn') || lowerT.includes('read')) {
             const chapterMatch = lowerT.match(/chapter\s*(\d+)|\b(\d+)\b/i);
             const subjectMatch = lowerT.match(/science|mathematics|maths|math|english|hindi|social\s*science|sst/i);
             const subjectToken = subjectMatch ? subjectMatch[0].replace(/\s+/g, ' ').trim() : null;
@@ -66,7 +77,10 @@ export const useGlobalVoice = (onTranscript, enabled = true) => {
 
             speakText("Opening the classroom. Please tell me which subject you want to learn.");
             navigate('/dashboard');
-          } else if (pendingSubject) {
+            return;
+          }
+
+          if (pendingSubject) {
             const chapterMatch = lowerT.match(/chapter\s+(\d+)|\b(\d+)\b/i);
             if (chapterMatch) {
               const chapterNumber = chapterMatch[1] || chapterMatch[2];
@@ -76,11 +90,14 @@ export const useGlobalVoice = (onTranscript, enabled = true) => {
               return;
             }
             speakText(`I heard ${pendingSubject}. Please tell me the chapter number, for example chapter 2.`);
-          } else if (studentId) {
+            return;
+          }
+
+          if (studentId) {
             try {
               const res = await api.sendCommand(studentId, transcript);
               if (res.data.useClientTTS !== false) {
-                speakText(res.data.text);
+                speakText(res.data.text, 'VT');
               }
               if (res.data.action === 'START_CHAPTER') {
                 const hintedSubject = lowerT.includes('math') ? 'mathematics' : lowerT.includes('science') ? 'science' : 'subject';
@@ -95,9 +112,11 @@ export const useGlobalVoice = (onTranscript, enabled = true) => {
     };
 
     window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
 
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
     };
   }, [studentId, navigate, startListening, stopListening, speakText, onTranscript, enabled, isListening]);
 

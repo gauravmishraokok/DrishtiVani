@@ -4,7 +4,7 @@ const { qdrant: qdrantConfig } = require('../config/env');
 const client = new QdrantClient({
   url: qdrantConfig.url,
   apiKey: qdrantConfig.apiKey,
-  checkCompatibility: false, 
+  checkCompatibility: false,
 });
 
 // Helper to convert 24-char MongoDB ID to 32-char UUID format
@@ -19,7 +19,7 @@ const uuidToMongo = (uuid) => {
   return raw.slice(-24);
 };
 
-const ensureCollection = async (name, vectorSize = 1536) => {
+const ensureCollection = async (name, vectorSize = 384) => {
   try {
     const collections = await client.getCollections();
     const exists = collections.collections.some((c) => c.name === name);

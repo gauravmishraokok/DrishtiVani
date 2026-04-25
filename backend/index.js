@@ -35,6 +35,8 @@ const corsOptions = {
 app.use(cors(corsOptions));
 app.options(/.*/, cors(corsOptions));
 app.use(express.json());
+app.use('/page-images', express.static(require('path').join(__dirname, 'uploads/page-images')));
+app.use('/api/uploads', express.static(require('path').join(__dirname, 'uploads')));
 
 // Main Routes
 app.use('/api/auth', authRoutes);

@@ -34,7 +34,7 @@ const run = async () => {
       console.log(`[Qdrant] Collection ${collection} missing or already empty.`);
     }
     await qdrant.createCollection(collection, {
-      vectors: { size: 1536, distance: 'Cosine' },
+      vectors: { size: 384, distance: 'Cosine' },
     });
     console.log(`[Qdrant] Recreated collection ${collection}`);
 

@@ -11,13 +11,13 @@ function AppContent() {
   const location = useLocation();
   const isOnboarding = location.pathname === '/' || location.pathname === '/onboarding';
   const isLearning = location.pathname.startsWith('/learn/');
-  
+
   // Disable global spacebar listener on onboarding and learning pages
   useGlobalVoice(null, !isOnboarding && !isLearning);
-  
+
   return (
-    <div className="flex bg-background min-h-screen text-bright overflow-x-hidden">
-      {!isOnboarding && <Sidebar />}
+    <div className="flex bg-[#FFF8F3] min-h-screen text-[#1A1A1A] overflow-x-hidden">
+      {!isOnboarding && !isLearning && <Sidebar />}
       <main className="flex-1 min-h-0 relative">
         <Routes>
           <Route path="/" element={<OnboardingPage />} />

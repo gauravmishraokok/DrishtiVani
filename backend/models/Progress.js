@@ -12,6 +12,24 @@ const progressSchema = new mongoose.Schema({
     correct: { type: Boolean },
     timestamp: { type: Date, default: Date.now }
   }],
+  mid_quiz_completed: { type: Boolean, default: false },
+  final_quiz_completed: { type: Boolean, default: false },
+  mid_quiz_results: [{
+    question: String,
+    selected_answer: String,
+    correct_answer: String,
+    concept_tested: String,
+    correct: Boolean,
+    timestamp: { type: Date, default: Date.now }
+  }],
+  final_quiz_results: [{
+    question: String,
+    selected_answer: String,
+    correct_answer: String,
+    concept_tested: String,
+    correct: Boolean,
+    timestamp: { type: Date, default: Date.now }
+  }],
   chapter_completed: { type: Boolean, default: false },
   last_updated: { type: Date, default: Date.now }
 });

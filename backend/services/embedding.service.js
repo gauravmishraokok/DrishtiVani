@@ -1,22 +1,34 @@
-const VECTOR_SIZE = 1536;
+const { pipeline } = require('@xenova/transformers');
 
-const textToVector = (text = '') => {
-  const vector = new Array(VECTOR_SIZE).fill(0);
-  const normalized = text.toLowerCase().replace(/[^a-z0-9\s]/g, ' ');
-  const tokens = normalized.split(/\s+/).filter(Boolean);
+const VECTOR_SIZE = 384;
+let embedder = null;
 
-  if (!tokens.length) return vector;
-
-  for (const token of tokens) {
-    for (let i = 0; i < token.length; i += 1) {
-      const code = token.charCodeAt(i);
-      const idx = (code * (i + 11) + token.length * 17) % VECTOR_SIZE;
-      vector[idx] += 1;
-    }
+/**
+ * Initializes the embedding pipeline if not already loaded.
+ * Model: Xenova/all-MiniLM-L6-v2 (384 dimensions)
+ */
+const getEmbedder = async () => {
+  if (!embedder) {
+    console.log('[Embedding] Loading Transformers model (384-dim)...');
+    embedder = await pipeline('feature-extraction', 'Xenova/all-MiniLM-L6-v2');
   }
+  return embedder;
+};
 
-  const magnitude = Math.sqrt(vector.reduce((sum, value) => sum + value * value, 0)) || 1;
-  return vector.map((value) => value / magnitude);
+/**
+ * Converts text to a real vector embedding.
+ */
+const textToVector = async (text = '') => {
+  if (!text) return new Array(VECTOR_SIZE).fill(0);
+
+  try {
+    const embed = await getEmbedder();
+    const output = await embed(text, { pooling: 'mean', normalize: true });
+    return Array.from(output.data);
+  } catch (error) {
+    console.error('[Embedding Error]', error);
+    return new Array(VECTOR_SIZE).fill(0);
+  }
 };
 
 module.exports = {

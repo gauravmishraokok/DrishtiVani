@@ -17,10 +17,10 @@ const answerQuestion = async (question, studentId, chapterId = null) => {
     if (!student) {
       return { answer: "I could not find your student profile. Please try onboarding again.", sourceChunks: [] };
     }
-    
+
     // 1. Build deterministic semantic embedding for retrieval
     const queryVector = embeddingService.textToVector(question);
-    
+
     let contextText = "";
     let chunkIds = [];
 
@@ -36,11 +36,11 @@ const answerQuestion = async (question, studentId, chapterId = null) => {
 
     const filter = activeChapterId || activeSubjectId
       ? {
-          must: [
-            ...(activeSubjectId ? [{ key: 'subject_id', match: { value: activeSubjectId } }] : []),
-            ...(activeChapterId ? [{ key: 'chapter_id', match: { value: activeChapterId } }] : []),
-          ],
-        }
+        must: [
+          ...(activeSubjectId ? [{ key: 'subject_id', match: { value: activeSubjectId } }] : []),
+          ...(activeChapterId ? [{ key: 'chapter_id', match: { value: activeChapterId } }] : []),
+        ],
+      }
       : null;
 
     try {
@@ -62,7 +62,7 @@ const answerQuestion = async (question, studentId, chapterId = null) => {
     const prompt = `
       You are an NCERT teacher for class ${student.class_num}.
       Keep the answer simple, student friendly, and concise.
-      Never mention internal system details like "I don't have excerpts", "database", "RAG", or "context not available".
+      IMPORTANT: If the student asks to "start a quiz", "take a test", or "be assessed", tell them "Okay! Let's start the quiz overlay now." and NOTHING ELSE. Do not ask them quiz questions yourself.
       ${contextText.length > 50
         ? `Use this textbook context first:\n${contextText}\n`
         : 'If textbook lines are not available, answer from class-appropriate NCERT understanding.'}

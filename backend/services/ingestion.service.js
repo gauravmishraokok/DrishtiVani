@@ -1,113 +1,117 @@
 const pdfjs = require('pdfjs-dist/legacy/build/pdf');
-const chunker = require('./chunker.service');
+const pageRenderer = require('./pageRenderer.service');
 const contentgen = require('./contentgen.service');
 const Subject = require('../models/Subject');
 const Chapter = require('../models/Chapter');
 const Chunk = require('../models/Chunk');
 const vectorAdapter = require('../adapters/vector.adapter');
 const embeddingService = require('./embedding.service');
-const { groq: groqConfig } = require('../config/env');
-const { Groq } = require('groq-sdk');
-
-const groq = new Groq({ apiKey: groqConfig.apiKey });
+const { qdrant: qdrantConfig } = require('../config/env');
+const DashboardCache = require('../models/DashboardCache');
 
 /**
- * Real PDF Ingestion with Image Extraction
+ * Idempotent Ingestion Pipeline
  */
 const processPDF = async (pdfBuffer, subjectName, classNum, chapterTitle, chapterNum) => {
   try {
-    console.log(`[Ingestion] Processing real PDF: ${subjectName} Ch ${chapterNum}`);
+    const cleanSubj = subjectName.trim();
+    const cleanTitle = chapterTitle.trim();
+    console.log(`[Ingestion] START: ${cleanSubj} Ch ${chapterNum} | Size: ${pdfBuffer.length} bytes`);
 
-    // 0. Ensure Qdrant collection exists (Strict for local Docker)
-    await vectorAdapter.ensureCollection(require('../config/env').qdrant.collection);
+    await vectorAdapter.ensureCollection(qdrantConfig.collection);
 
-    // 1. Extract Text and Images using pdfjs-dist
-    const uint8Array = new Uint8Array(pdfBuffer);
-    const loadingTask = pdfjs.getDocument({ data: uint8Array, useSystemFonts: true });
-    const pdf = await loadingTask.promise;
-    let fullText = "";
-    const imageDescriptions = [];
+    // CASE-INSENSITIVE SUBJECT FIND
+    let subject = await Subject.findOne({
+      name: { $regex: new RegExp(`^${cleanSubj}$`, 'i') },
+      class_num: classNum
+    });
 
-    for (let i = 1; i <= pdf.numPages; i++) {
-        const page = await pdf.getPage(i);
-        const textContent = await page.getTextContent();
-        const pageText = textContent.items.map(item => item.str).join(' ');
-        fullText += pageText + "\n";
-
-        // Image extraction logic
-        // pdf.js can extract images from page.getOperatorList()
-        const ops = await page.getOperatorList();
-        const fns = ops.fnArray;
-        const args = ops.argsArray;
-
-        for (let j = 0; j < fns.length; j++) {
-            if (fns[j] === pdfjs.OPS.paintImageXObject || fns[j] === pdfjs.OPS.paintInlineImageXObject) {
-                // Here we would extract the image buffer and call Groq Vision
-                // Since actual vision call requires image buffer, we'll placeholder a generic description for now
-                // but wire it into the enriched text as per spec.
-                const desc = "A technical diagram or illustration found in NCERT textbook.";
-                imageDescriptions.push(desc);
-                fullText += `\n[IMAGE: ${desc}]\n`;
-            }
-        }
+    if (!subject) {
+      console.log(`[Ingestion] Creating new subject: ${cleanSubj}`);
+      subject = await Subject.create({ name: cleanSubj, class_num: classNum });
+    } else {
+      // Normalize name if it was different case
+      if (subject.name !== cleanSubj) {
+        subject.name = cleanSubj;
+        await subject.save();
+      }
     }
 
-    // 2. Chunks
-    const rawChunks = await chunker.splitIntoChunks(fullText);
-    
-    // 3. Database entries
-    let subject = await Subject.findOne({ name: subjectName, class_num: classNum });
-    if (!subject) subject = await Subject.create({ name: subjectName, class_num: classNum });
+    // IDEMPOTENCY CHECK: Hard cleanup of existing chapter documents with same Subject/Number
+    const existingChapters = await Chapter.find({ subject_id: subject._id, chapter_num: chapterNum });
+    for (const ec of existingChapters) {
+      console.log(`[Ingestion] Purging duplicate Chapter ${chapterNum}: ${ec.title}`);
+      await Chunk.deleteMany({ chapter_id: ec._id });
+      // Correctly remove from Subject.chapters array
+      subject.chapters = subject.chapters.filter(id => id.toString() !== ec._id.toString());
+      await Chapter.findByIdAndDelete(ec._id);
+    }
+    await subject.save();
 
     const chapter = await Chapter.create({
       subject_id: subject._id,
-      title: chapterTitle,
-      chapter_num: chapterNum,
-      total_chunks: rawChunks.length
+      title: cleanTitle,
+      chapter_num: chapterNum
     });
 
-    subject.chapters.push(chapter._id);
-    await subject.save();
+    chapter.page_image_dir = `page-images/${chapter._id}`;
 
-    const chunkIds = [];
-    for (const raw of rawChunks) {
-      const generated = await contentgen.generateContent(raw.raw_text, classNum, subjectName);
-      
-      const chunk = await Chunk.create({
-        chapter_id: chapter._id,
-        subject_id: subject._id,
-        chunk_index: raw.chunk_index,
-        heading: raw.heading,
-        raw_text: raw.raw_text,
-        word_count: raw.word_count,
-        teaching_script: generated.teaching_script,
-        quiz: generated.quiz,
-        image_descriptions: imageDescriptions
-      });
+    const uint8Array = new Uint8Array(pdfBuffer);
+    const pdf = await pdfjs.getDocument({ data: uint8Array, useSystemFonts: true, disableFontFace: true }).promise;
 
-      chunkIds.push(chunk._id);
+    let globalChunkIndex = 0;
+    let allRawText = "";
 
-      // 4. Qdrant Vectorization (Mandatory now)
-      const semanticVector = embeddingService.textToVector(chunk.raw_text);
-      await vectorAdapter.upsertChunk(chunk._id.toString(), semanticVector, {
-        subject_id: subject._id.toString(),
-        chapter_id: chapter._id.toString(),
-        chunk_index: chunk.chunk_index,
-        chapter_title: chapter.title,
-        heading: chunk.heading,
-      });
+    for (let pNum = 1; pNum <= pdf.numPages; pNum++) {
+      console.log(`[Ingestion] P${pNum}/${pdf.numPages}...`);
+      const page = await pdf.getPage(pNum);
+      const textContent = await page.getTextContent();
+      const rawText = textContent.items.map(item => item.str).join(' ');
+      allRawText += rawText + "\n";
+
+      const imagePath = await pageRenderer.renderPageToImage(pdf, pNum, chapter._id, chapter.page_image_dir);
+
+      const segments = await contentgen.generatePageContent(rawText, pNum, classNum, cleanSubj, cleanTitle, pNum === 1);
+
+      for (let sIdx = 0; sIdx < segments.length; sIdx++) {
+        const chunk = await Chunk.create({
+          chapter_id: chapter._id, subject_id: subject._id,
+          chunk_index: globalChunkIndex++, page_num: pNum,
+          sub_chunk_index: sIdx, total_sub_chunks_for_page: segments.length,
+          is_first_of_chapter: (globalChunkIndex === 1),
+          raw_text: rawText, word_count: rawText.split(/\s+/).length,
+          teaching_script: segments[sIdx], page_image_path: imagePath
+        });
+        const vector = await embeddingService.textToVector(chunk.teaching_script);
+        await vectorAdapter.upsertChunk(chunk._id, vector, {
+          chapter_id: chapter._id.toString(), subject_id: subject._id.toString(),
+          chunk_index: chunk.chunk_index, page_num: chunk.page_num
+        });
+      }
     }
 
-    chapter.chunk_ids = chunkIds;
+    const quizData = await contentgen.generateChapterQuiz(allRawText, classNum, cleanSubj);
+    chapter.total_chunks = globalChunkIndex;
+    chapter.total_pages = pdf.numPages;
+    chapter.mid_quiz = quizData.mid_quiz;
+    chapter.final_quiz = quizData.final_quiz;
+    chapter.mid_quiz_trigger_index = Math.floor(globalChunkIndex / 2);
     await chapter.save();
 
-    return { success: true, chapterId: chapter._id, chunks: chunkIds.length };
+    if (!subject.chapters.includes(chapter._id)) {
+      subject.chapters.push(chapter._id);
+      await subject.save();
+    }
+
+    await DashboardCache.deleteMany({});
+    return { success: true, chapterId: chapter._id, totalChunks: globalChunkIndex };
   } catch (error) {
-    console.error(`[Ingestion] Critical ingestion error: ${error.message}`);
+    const fs = require('fs');
+    const logMsg = `[${new Date().toISOString()}] [Ingestion FAILED]: ${error.message}\n${error.stack}\n`;
+    fs.appendFileSync('ingestion_debug.log', logMsg);
+    console.error(`[Ingestion FAILED]: ${error.message}`);
     throw error;
   }
 };
 
-module.exports = {
-  processPDF
-};
+module.exports = { processPDF };

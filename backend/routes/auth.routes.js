@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const Student = require('../models/Student');
+const dashboardCacheService = require('../services/dashboardCache.service');
 
 /**
  * POST /api/auth/onboard
@@ -39,6 +40,9 @@ router.post('/onboard', async (req, res) => {
       });
     }
 
+    // INVALIDATE CACHE ON ONBOARD
+    await dashboardCacheService.invalidate(student._id);
+
     res.status(201).json(student);
   } catch (error) {
     console.error('[Onboard Error]', error);
@@ -66,6 +70,9 @@ router.post('/login', async (req, res) => {
         choices: students.map(s => ({ _id: s._id, name: s.name, class_num: s.class_num }))
       });
     }
+
+    // INVALIDATE CACHE ON LOGIN
+    await dashboardCacheService.invalidate(students[0]._id);
 
     res.json(students[0]);
   } catch (error) {

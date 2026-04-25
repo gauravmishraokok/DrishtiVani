@@ -41,20 +41,60 @@ export const useGlobalVoice = (onTranscript, enabled = true) => {
           const transcript = await stopListening();
           if (!transcript) return;
 
-          if (onTranscript) {
-            onTranscript(transcript);
-            return;
-          }
-
           const lowerT = transcript.toLowerCase();
           const pendingSubject = localStorage.getItem('pendingSubjectSelection');
 
-          if (lowerT.includes('dashboard')) {
+          // 1. GLOBAL NAVIGATION & REPORTS (HIGHEST PRIORITY)
+          if (lowerT.includes('dashboard') || lowerT.includes('home')) {
             speakText("Navigating to your dashboard.");
             navigate('/dashboard');
             return;
           }
 
+          if (lowerT.includes('admin') || lowerT.includes('teacher panel')) {
+            speakText("Opening the admin panel.");
+            navigate('/admin');
+            return;
+          }
+
+          if (lowerT.includes('go back')) {
+            speakText("Going back.");
+            navigate(-1);
+            return;
+          }
+
+          if (lowerT.includes('progress')) {
+            try {
+              const res = await api.getDashboardData(studentId);
+              const d = res.data;
+              const subCount = d.subjects_data?.length || 0;
+              const summary = `You have completed ${d.overall_completion} percent of your syllabus with an average score of ${d.overall_quiz_avg} percent across ${subCount} subjects. ${d.ai_insight || ''}`;
+              speakText(summary);
+            } catch (err) {
+              speakText("I couldn't fetch your progress right now.");
+            }
+            return;
+          }
+
+          if (lowerT.includes('report') || lowerT.includes('email') || lowerT.includes('mail')) {
+            speakText("Sending your progress report to the registered email address.");
+            try {
+              const res = await api.emailReport(studentId);
+              speakText(`Done! Your progress report has been sent to ${res.data.recipient || 'the trainer'}.`);
+            } catch (err) {
+              speakText("I'm sorry, I couldn't send the report at this time.");
+              console.error("Email fail", err);
+            }
+            return;
+          }
+
+          // 2. PAGE-SPECIFIC HANDLER (CALLBACK)
+          if (onTranscript) {
+            onTranscript(transcript);
+            return;
+          }
+
+          // 3. FALLBACK COMMANDS
           if (lowerT.includes('classroom') || lowerT.includes('learn') || lowerT.includes('read')) {
             const chapterMatch = lowerT.match(/chapter\s*(\d+)|\b(\d+)\b/i);
             const subjectMatch = lowerT.match(/science|mathematics|maths|math|english|hindi|social\s*science|sst/i);

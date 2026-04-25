@@ -53,8 +53,8 @@ const getDashboardData = async (studentId) => {
         const student = await Student.findById(studentId);
         if (!student) return { subjects_data: [], overall_completion: 0, overall_quiz_avg: 0, ai_insight: "Profile not found.", study_streak_days: 0, achievements: [] };
 
-        let subjects = await Subject.find({ class_num: student.class_num });
-        if (subjects.length === 0) subjects = await Subject.find();
+        const subjects = await Subject.find({ class_num: student.class_num });
+        console.log(`[Dashboard] Fetched ${subjects.length} subjects for student ${student.name} (Class ${student.class_num})`);
 
         const chapters = await Chapter.find({ subject_id: { $in: subjects.map(s => s._id) } });
         const progressRecords = await Progress.find({ student_id: studentId });

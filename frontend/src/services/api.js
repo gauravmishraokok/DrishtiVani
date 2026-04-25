@@ -17,6 +17,7 @@ const api = {
   submitQuizResult: (data) => axios.post(`${API_URL}/progress/submit-quiz`, data),
   getDashboardData: (studentId) => axios.get(`${API_URL}/progress/dashboard/${studentId}`),
   getCatalog: (classNum) => axios.get(`${API_URL}/progress/catalog/${classNum}`),
+  emailReport: (studentId) => axios.post(`${API_URL}/progress/email-report/${studentId}`),
 
   // Admin
   uploadPDF: (formData) => axios.post(`${API_URL}/admin/ingest`, formData),

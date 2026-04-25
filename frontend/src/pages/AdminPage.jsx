@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Upload, Database, FileText, Activity, CheckCircle, Trash2, Info, BookOpen, Edit2, Save, X } from 'lucide-react';
 import api from '../services/api';
+import { useGlobalVoice } from '../hooks/useGlobalVoice';
 
 const AdminPage = () => {
   const [file, setFile] = useState(null);
@@ -12,6 +13,8 @@ const AdminPage = () => {
   const [isIngesting, setIsIngesting] = useState(false);
   const [catalog, setCatalog] = useState([]);
   const [isLoadingCatalog, setIsLoadingCatalog] = useState(false);
+
+  useGlobalVoice(null, true);
 
   // Edit States
   const [editingSubId, setEditingSubId] = useState(null);

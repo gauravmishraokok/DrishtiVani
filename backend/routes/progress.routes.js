@@ -44,4 +44,17 @@ router.post('/submit-quiz', async (req, res) => {
   }
 });
 
+const emailService = require('../services/email.service');
+
+// POST /api/progress/email-report/:studentId
+router.post('/email-report/:studentId', async (req, res) => {
+  try {
+    const result = await emailService.sendProgressReport(req.params.studentId);
+    const { mail } = require('../config/env');
+    res.json({ success: true, messageId: result.messageId, recipient: mail.reportEmail });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 module.exports = router;

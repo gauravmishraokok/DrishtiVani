@@ -28,22 +28,31 @@ const callGroqWithRetry = async (params, maxRetries = 3) => {
   throw lastError;
 };
 
+const transitionPrompts = [
+  "Should we move to the next part?", "Shall I continue?", "Ready for more?", "Did you get that? Should we proceed?",
+  "Got it? Let's move on.", "Check! Ready for the next section?", "Shall we keep going?", "Does that make sense? Want to continue?",
+  "Understandable? Let's proceed.", "Okay, ready for the next one?", "Want me to go ahead?", "Should we see what is next?",
+  "How was that? Ready to move forward?", "Ready for the next concept?", "Shall we advance?", "Want to hear more?",
+  "Done with this part? Let's continue.", "Okay, next section?", "Ready? Let's go ahead."
+];
+
+const getRandomTransition = () => transitionPrompts[Math.floor(Math.random() * transitionPrompts.length)];
+
 /**
  * Generates segmented teaching content for a single PDF page.
- * Returns an array of 2-3 teaching segments.
+ * Returns an array of 1-3 teaching segments.
  */
 const generatePageContent = async (rawText, pageNum, classNum, subject, chapterTitle, isFirstPage) => {
   try {
-    const targetSegments = 3;
-
     const systemPrompt = `You are a high-quality human NCERT teacher for Class ${classNum} ${subject}. 
 You are teaching a blind student via audio. YOUR SCRIPT WILL BE SPOKEN.
-Aesthetics of speech matter: Be descriptive, pedagogical, warm, and engaging.
-Speak like a teacher explaining a concept in a classroom.`;
+Your goal is to paint a vivid picture of the textbook page. Describe any images, icons, layout elements, or charts in detail.
+Be pedagogical, warm, and engaging. DO NOT ask questions at the end of your segments like "Ready to move on?" or "Got it?".
+Explain the concepts clearly as if you are reading the page to someone who cannot see it.`;
 
     const userPrompt = `
 Teaching page ${pageNum} of "${chapterTitle}".
-${isFirstPage ? 'First page: Start with a 1-sentence warm welcome.' : 'Continuation.'}
+${isFirstPage ? 'First page: Start with a short, warm greeting.' : 'Continuation.'}
 
 TEXTBOOK MATERIAL:
 """
@@ -51,11 +60,11 @@ ${rawText}
 """
 
 STRICT INSTRUCTIONS:
-1. Divide this material into EXACTLY 2 or 3 sections using: |||SEGMENT|||
-2. Each section MUST be a single, meaningful pedagogical paragraph (approx 50-70 words).
-3. DO NOT read verbatim. Synthesize and teach conceptually.
-4. Each section should end with an engaging follow-up flow or a small question to check for understanding (e.g., "Ready for more?", "Does that make sense?").
-5. The total content should be high-quality and flow logically from one segment to the next.
+1. Divide this material into 1 to 3 meaningful sections using: |||SEGMENT|||
+2. Each section MUST be a single, meaningful pedagogical paragraph.
+3. DO NOT read verbatim. Synthesize, explain, and VIVIDLY DESCRIBE all visual elements present in the text description or inferred from context.
+4. DO NOT end any section with a question. Provide a complete, informative explanation.
+5. The total content should be high-quality and flow logically.
 
 Return ONLY segments divided by |||SEGMENT|||.
 `;
@@ -69,11 +78,14 @@ Return ONLY segments divided by |||SEGMENT|||.
     });
 
     const raw = response.choices[0].message.content.trim();
-    const segments = raw.split('|||SEGMENT|||')
+    let segments = raw.split('|||SEGMENT|||')
       .map(s => s.trim())
       .filter(s => s.length > 20);
 
-    return segments.length > 0 ? segments : [raw];
+    if (segments.length === 0) segments = [raw];
+
+    // Append transitions to segments so they are ready for speech
+    return segments.map(s => `${s} ... ${getRandomTransition()}`);
   } catch (error) {
     console.error(`[ContentGen Page] Error: ${error.message}`);
     throw error;
@@ -114,4 +126,30 @@ Content sample: ${allPagesText.substring(0, 10000)}
   }
 };
 
-module.exports = { generatePageContent, generateChapterQuiz };
+/**
+ * Translates a teaching segment into Hindi, preserving pedagogical tone.
+ */
+const translateToHindi = async (text) => {
+  try {
+    const systemPrompt = `You are a professional Hindi translator for NCERT education. 
+Translate the provided teaching script into warm, pedagogical, and simple Hindi.
+Keep any technical terms simple. Preserve the "..." pauses and the transition question at the end.`;
+
+    const userPrompt = `Translate this to Hindi:\n\n${text}`;
+
+    const response = await callGroqWithRetry({
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt }
+      ],
+      model: groqConfig.model,
+    });
+
+    return response.choices[0].message.content.trim();
+  } catch (error) {
+    console.error(`[Translation] Error: ${error.message}`);
+    return text; // Fallback to original
+  }
+};
+
+module.exports = { generatePageContent, generateChapterQuiz, translateToHindi };

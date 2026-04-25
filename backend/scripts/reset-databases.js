@@ -39,6 +39,15 @@ const run = async () => {
     console.log(`[Qdrant] Recreated collection ${collection}`);
 
     console.log('Database reset complete.');
+
+    // Clear locally stored page images
+    const fs = require('fs');
+    const imagePath = path.join(__dirname, '../uploads/page-images');
+    if (fs.existsSync(imagePath)) {
+      fs.rmSync(imagePath, { recursive: true, force: true });
+      fs.mkdirSync(imagePath, { recursive: true });
+      console.log('[File] Cleared page-images directory in uploads');
+    }
   } catch (error) {
     console.error('Database reset failed:', error.message);
     process.exitCode = 1;

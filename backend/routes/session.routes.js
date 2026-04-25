@@ -21,7 +21,7 @@ const intents = [
   },
   {
     name: 'EXIT_DOUBT_MODE',
-    regex: /continue learning|lets continue|back to lesson|resume lesson|i understood|understood|move on|let'?s move on|next concept|continue chapter/i,
+    regex: /continue learning|lets continue|back to lesson|resume lesson|i understood|understood|move on|let'?s move on|next concept|continue chapter|sikhna jari rakhein|vapas chalo|samajh aa gaya|aage badhein/i,
     handler: async () => {
       return {
         text: 'Great. Switching back to teaching mode.',
@@ -111,7 +111,7 @@ const intents = [
   },
   {
     name: 'CONTINUE',
-    regex: /continue|next/i,
+    regex: /continue|next|aage|agla|jari rakhein/i,
     handler: async (match, sessionId) => {
       // Find last active progress to know where we are
       const progress = await Progress.findOne({ student_id: sessionId }).sort({ last_updated: -1 });

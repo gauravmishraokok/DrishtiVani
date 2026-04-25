@@ -48,7 +48,11 @@ const getDashboardData = async (studentId) => {
             return { subjects_data: [], overall_completion: 0, overall_quiz_avg: 0, ai_insight: "Welcome!", study_streak_days: 0, achievements: [] };
         }
         const cached = await DashboardCache.findOne({ student_id: studentId });
-        if (cached) return cached;
+        if (cached) {
+            console.log(`[Dashboard] Cache HIT for student ${studentId}`);
+            return cached;
+        }
+        console.log(`[Dashboard] Cache MISS for student ${studentId}. Recomputing...`);
 
         const student = await Student.findById(studentId);
         if (!student) return { subjects_data: [], overall_completion: 0, overall_quiz_avg: 0, ai_insight: "Profile not found.", study_streak_days: 0, achievements: [] };

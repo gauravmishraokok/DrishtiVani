@@ -104,6 +104,7 @@ const processPDF = async (pdfBuffer, subjectName, classNum, chapterTitle, chapte
     }
 
     await DashboardCache.deleteMany({});
+    console.log(`[Ingestion] Global Dashboard Cache cleared.`);
     return { success: true, chapterId: chapter._id, totalChunks: globalChunkIndex };
   } catch (error) {
     const fs = require('fs');

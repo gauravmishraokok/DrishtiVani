@@ -26,9 +26,21 @@ const getChunkContent = async (studentId, chapterId, chunkIndex) => {
     const triggerFinalQuiz = isLastChunk && (!progress || !progress.final_quiz_completed);
 
     // Select script based on language
-    const script = (student?.language === 'hi' && chunk.teaching_script_hi)
-      ? chunk.teaching_script_hi
-      : chunk.teaching_script;
+    let script = chunk.teaching_script;
+    if (student?.language === 'hi') {
+      if (chunk.teaching_script_hi) {
+        script = chunk.teaching_script_hi;
+      } else {
+        // Dynamic Translation
+        const contentgen = require('./contentgen.service');
+        console.log(`[TeachingService] Translating Chunk ${chunkIndex} to Hindi for student ${studentId}...`);
+        script = await contentgen.translateToHindi(chunk.teaching_script);
+
+        // Cache it in the database
+        chunk.teaching_script_hi = script;
+        await chunk.save();
+      }
+    }
 
     // Update Progress Record - ROBUST ID CHECK
     if (!progress) {

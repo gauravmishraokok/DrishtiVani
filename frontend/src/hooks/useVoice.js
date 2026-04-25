@@ -127,8 +127,9 @@ export const useVoice = (sessionId) => {
       const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
       if (Recognition) {
         if (!recognitionRef.current) {
+          const studentLanguage = localStorage.getItem('studentLanguage') || 'English';
           const recognition = new Recognition();
-          recognition.lang = 'en-IN';
+          recognition.lang = studentLanguage.toLowerCase().includes('hindi') ? 'hi-IN' : 'en-IN';
           recognition.interimResults = true;
           recognition.continuous = true; // KEEP ALIVE WHILE HOLDING
           recognition.maxAlternatives = 1;
@@ -282,39 +283,62 @@ export const useVoice = (sessionId) => {
     setVoiceModeState('VT');
   }, [voiceMode, cleanupVoiceState]);
 
-  const speakTextWithMode = async (text, targetMode = null) => {
+  const speakTextWithMode = (text, targetMode = null) => {
     if (!text) return;
-    const effectiveMode = 'VT'; // FORCE VT FOR RELIABILITY
+    const effectiveMode = 'VT';
     if (effectiveMode === 'VT') {
-      if (!window.speechSynthesis) {
-        console.warn('[Voice] Browser TTS unavailable in VT mode.');
-        setLastError('Browser TTS unavailable');
-        return;
-      }
+      if (!window.speechSynthesis) return;
+
+      // SYNC CANCEL: Essential to stay in the user gesture lock
       window.speechSynthesis.cancel();
+
+      const studentLanguage = localStorage.getItem('studentLanguage') || 'English';
+      const isHindi = studentLanguage.toLowerCase().includes('hindi') || studentLanguage === 'hi';
+
       const utterance = new SpeechSynthesisUtterance(text);
-      utterance.lang = 'en-IN';
+      utterance.lang = isHindi ? 'hi-IN' : 'en-IN';
       utterance.rate = 1;
       utterance.pitch = 1;
-      const availableVoices = window.speechSynthesis.getVoices();
+      utterance.volume = 1;
+
+      const allVoices = window.speechSynthesis.getVoices();
       const preferredVoiceName = localStorage.getItem('preferredVoiceName');
-      const selectedVoice =
-        (preferredVoiceName && availableVoices.find((v) => v.name === preferredVoiceName)) ||
-        availableVoices.find((v) => /female|zira|samantha|google uk english female/i.test(v.name)) ||
-        availableVoices.find((v) => /^en/i.test(v.lang));
+      let selectedVoice = (preferredVoiceName && allVoices.find((v) => v.name === preferredVoiceName));
+
+      if (!selectedVoice) {
+        // ALWAYS PRIORITIZE INDIAN VOICES FOR CONSISTENCY (regardless of language)
+        selectedVoice = allVoices.find((v) => v.lang.replace('_', '-').includes('hi-IN')) ||
+          allVoices.find((v) => v.lang.startsWith('hi')) ||
+          allVoices.find((v) => /hindi|india|google हिन्दी|kalpana|heera/i.test(v.name)) ||
+          allVoices.find((v) => v.lang.includes('IN'));
+
+        // Fallback to standard English only if no Indian voice exists
+        if (!selectedVoice) {
+          selectedVoice = allVoices.find((v) => /female|zira|samantha/i.test(v.name)) ||
+            allVoices.find((v) => /^en/i.test(v.lang));
+        }
+      }
+
       if (selectedVoice) utterance.voice = selectedVoice;
+
       utterance.onstart = () => setIsSpeaking(true);
       utterance.onend = () => setIsSpeaking(false);
-      utterance.onerror = () => setIsSpeaking(false);
+      utterance.onerror = (e) => {
+        console.error('[TTS FATAL ERROR]:', e);
+        setIsSpeaking(false);
+      };
+
+      window.speechSynthesis.resume();
       window.speechSynthesis.speak(utterance);
       return;
     }
 
-    const ready = await startVoiceSession('AGENT');
-    if (!ready) return;
-    vapi.send({
-      type: 'add-message',
-      message: { role: 'assistant', content: text },
+    startVoiceSession('AGENT').then(ready => {
+      if (!ready) return;
+      vapi.send({
+        type: 'add-message',
+        message: { role: 'assistant', content: text },
+      });
     });
   };
 

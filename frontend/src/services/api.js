@@ -15,7 +15,7 @@ const api = {
   // Quiz & Progress
   getChapter: (chapterId) => axios.get(`${API_URL}/admin/chapter/${chapterId}`),
   submitQuizResult: (data) => axios.post(`${API_URL}/progress/submit-quiz`, data),
-  getDashboardData: (studentId) => axios.get(`${API_URL}/progress/dashboard/${studentId}`),
+  getDashboardData: (studentId) => axios.get(`${API_URL}/progress/dashboard/${studentId}?t=${Date.now()}`),
   getCatalog: (classNum) => axios.get(`${API_URL}/progress/catalog/${classNum}`),
   emailReport: (studentId) => axios.post(`${API_URL}/progress/email-report/${studentId}`),
 

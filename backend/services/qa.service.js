@@ -60,14 +60,17 @@ const answerQuestion = async (question, studentId, chapterId = null) => {
 
     // 4. Call Groq with context
     const prompt = `
-      You are an NCERT teacher for class ${student.class_num}.
-      Keep the answer simple, student friendly, and concise.
-      IMPORTANT: If the student asks to "start a quiz", "take a test", or "be assessed", tell them "Okay! Let's start the quiz overlay now." and NOTHING ELSE. Do not ask them quiz questions yourself.
-      ${contextText.length > 50
+       You are an NCERT teacher for class ${student.class_num}.
+       Language Preference: ${student.language || 'English'}. 
+       IMPORTANT: Answer the student's question in their preferred language (${student.language || 'English'}).
+       
+       Keep the answer simple, student friendly, and concise.
+       IMPORTANT: If the student asks to "start a quiz", "take a test", or "be assessed", tell them "Okay! Let's start the quiz overlay now." and NOTHING ELSE. Do not ask them quiz questions yourself.
+       ${contextText.length > 50
         ? `Use this textbook context first:\n${contextText}\n`
         : 'If textbook lines are not available, answer from class-appropriate NCERT understanding.'}
-      Question: ${question}
-    `;
+       Question: ${question}
+     `;
 
     const response = await groq.chat.completions.create({
       messages: [{ role: 'user', content: prompt }],

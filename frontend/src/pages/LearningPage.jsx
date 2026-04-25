@@ -34,7 +34,7 @@ const LearningPage = () => {
     ];
 
     const continueIntents = [
-        "yes", "next", "got it", "sure", "definitely", "okay", "ok", "yep", "yeah", "proceed",
+        "yes", "ok next", "okay next", "yes got it", "yes next", "next", "got it", "sure", "definitely", "okay", "ok", "yep", "yeah", "proceed",
         "continue", "move on", "keep going", "that's it", "understood", "all right", "alright", "go ahead"
     ];
 
